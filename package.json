@@ -1,0 +1,53 @@
+{
+    "name": "kunpocc-assets",
+    "version": "0.0.1",
+    "description": "基于creator3.0+的kunpocc库",
+    "main": "./dist/kunpocc-assets.cjs",
+    "module": "./dist/kunpocc-assets.mjs",
+    "types": "./dist/kunpocc-assets.d.ts",
+    "exports": {
+        ".": {
+            "require": "./dist/kunpocc-assets.cjs",
+            "import": "./dist/kunpocc-assets.mjs",
+            "types": "./dist/kunpocc-assets.d.ts",
+            "default": "./dist/kunpocc-assets.cjs"
+        },
+        "./min": {
+            "require": "./dist/kunpocc-assets.min.cjs",
+            "import": "./dist/kunpocc-assets.min.mjs"
+        }
+    },
+    "scripts": {
+        "clean": "rm -rf dist",
+        "build": "npm run clean && rollup -c rollup.config.mjs",
+        "copy": "cp -r dist/* ../KunpoDemo/node_modules/kunpocc-assets/dist/",
+        "build:all": "npm run build && npm run copy"
+    },
+    "files": [
+        "dist/kunpocc-assets.cjs",
+        "dist/kunpocc-assets.mjs",
+        "dist/kunpocc-assets.min.cjs",
+        "dist/kunpocc-assets.min.mjs",
+        "dist/kunpocc-assets.d.ts"
+    ],
+    "author": "gongxh",
+    "license": "ISC",
+    "repository": {
+        "type": "gitlab",
+        "url": "https://github.com/Gongxh0901/kunpocc-assets"
+    },
+    "publishConfig": {
+        "registry": "https://registry.npmjs.org/"
+    },
+    "devDependencies": {
+        "@cocos/creator-types": "^3.8.0",
+        "@rollup/plugin-terser": "^0.4.4",
+        "@rollup/plugin-typescript": "^12.1.2",
+        "@types/lodash": "^4.17.13",
+        "@types/node": "^22.10.2",
+        "rollup": "^4.28.1",
+        "rollup-plugin-dts": "^6.1.1",
+        "ts-node": "^10.9.2",
+        "tslib": "^2.6.2"
+    }
+}
