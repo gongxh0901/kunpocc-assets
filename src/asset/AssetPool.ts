@@ -24,7 +24,7 @@ export class AssetPool {
      */
     private static _batchAssetNames: Map<string, string[]> = new Map();
 
-    /** 批量添加资源 */
+    /** 添加资源 */
     public static add(asset: Asset[] | Asset, bundle: AssetManager.Bundle = resources, batchName: string = ""): void {
         if (Array.isArray(asset)) {
             for (const item of asset) {
@@ -51,6 +51,11 @@ export class AssetPool {
         }
     }
 
+    /** 
+     * 检查资源是否存在
+     * @param path 资源在bundle下的路径
+     * @param bundlename 资源bundle名 默认 resources
+     */
     public static has(path: string, bundlename: string = "resources"): boolean {
         let key = this.getKey(path, bundlename);
         if (!this._assets[key]) {
@@ -58,7 +63,11 @@ export class AssetPool {
         }
         return true;
     }
-
+    /** 
+     * 获取资源
+     * @param path 资源在bundle下的路径
+     * @param bundlename 资源bundle名 默认 resources
+     */
     public static get<T extends Asset>(path: string, bundlename: string = "resources"): T {
         let key = this.getKey(path, bundlename);
         if (!this._assets[key]) {
@@ -67,7 +76,9 @@ export class AssetPool {
         return this._assets[key] as T;
     }
 
-    /** 按 uuid 判断资源是否存在 */
+    /** 
+     * 按 uuid 判断资源是否存在
+     */
     public static hasUUID(uuid: string): boolean {
         if (!this._uuidToName.has(uuid)) {
             return false;
@@ -75,7 +86,9 @@ export class AssetPool {
         return true;
     }
 
-    /** 按 uuid 获取资源 */
+    /** 
+     * 按 uuid 获取资源
+     */
     public static getByUUID<T extends Asset>(uuid: string): T {
         if (!this._uuidToName.has(uuid)) {
             console.log(`获取资源失败: 资源 uuid:${uuid} 未加载`);
@@ -99,14 +112,23 @@ export class AssetPool {
         this._batchAssetNames.delete(batchName);
     }
 
-    /** 按资源路径释放资源 */
+    /** 
+     * 按资源路径释放资源
+     * @param path 资源在bundle下的路径
+     * @param bundlename 资源bundle名 默认 resources
+     */
     public static releasePath(path: string, bundlename: string = "resources"): void {
         let key = this.getKey(path, bundlename);
         this.release(key);
     }
 
-    /** 按 bundle 和 文件夹释放资源 */
-    public static releaseDir(dir: string, bundlename: string = "resources", asset: typeof Asset): Promise<boolean> {
+    /** 
+     * 按 bundle、文件夹和资源类型释放资源
+     * @param dir 资源在bundle下的路径
+     * @param bundlename 资源bundle名 默认 resources
+     * @param asset 资源类型 不传表示所有类型的资源
+     */
+    public static releaseDir(dir: string, bundlename: string = "resources", asset?: typeof Asset): Promise<boolean> {
         return new Promise((resolve, reject) => {
             if (bundlename == "resources") {
                 let uuids = AssetUtils.getUUIDs(dir, asset, resources);
@@ -128,7 +150,9 @@ export class AssetPool {
         });
     }
 
-    /** 按 uuid 释放资源 */
+    /** 
+     * 按 uuid 释放资源
+     */
     public static releaseUUID(uuid: string): void {
         if (this._uuidToName.has(uuid)) {
             let key = this._uuidToName.get(uuid);
@@ -136,7 +160,9 @@ export class AssetPool {
         }
     }
 
-    /** 释放所有加载的资源 */
+    /** 
+     * 释放所有加载的资源
+     */
     public static releaseAll(): void {
         for (const key in this._assets) {
             this._assets[key].decRef();
@@ -156,6 +182,8 @@ export class AssetPool {
 
             this._assets[key].decRef();
             delete this._assets[key];
+        } else {
+            console.log(`释放资源失败: 资源【${key}】未加载`);
         }
     }
 

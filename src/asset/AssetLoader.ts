@@ -5,57 +5,22 @@
  */
 
 import { Asset, AssetManager, resources } from "cc";
+import { AssetInfo } from "./AssetInfo";
+import { AssetLoaderAgent } from "./AssetLoaderAgent";
 import { AssetPool } from "./AssetPool";
 import { AssetUtils } from "./AssetUtils";
+import { ErrorCode, IAssetConfig, StateType } from "./header";
 
-export interface IAssetConfig {
-    /** 资源类型 */
-    type: typeof Asset;
-    /** 资源路径 */
-    path: string;
-    /** 是否是单个文件 默认是文件夹 */
-    isFile?: boolean;
-    /** 资源包名 默认 resources */
-    bundle?: string;
-}
+export class AssetLoader extends AssetLoaderAgent {
+    /** @internal */
+    protected _name: string = "";
 
-/** 
- * 资源加载的状态类型 
- * @internal
- */
-enum StateType {
-    Error,
-    Wait,
-    Loading,
-    Finish,
-}
-
-export class AssetLoader {
-    /** 
-     * 资源加载器名称
-     * @internal
-     */
-    private _name: string = "";
-    /** 
-     * 资源总数
-     * @internal
-     */
-    private _total: number = 0;
-    /** 
-     * 最大并行加载数量
-     * @internal
-     */
-    private _maxParallel: number = 10;
     /** 
      * 当前并行加载数量
      * @internal
      */
     private _parallel: number = 0;
-    /** 
-     * 失败重试次数
-     * @internal
-     */
-    private _maxRetry: number = 3;
+
     /** 
      * 失败重试次数
      * @internal
@@ -68,134 +33,53 @@ export class AssetLoader {
      */
     private _initSuccess: boolean = false;
 
-    /** 
-     * 加载进度回调
-     * @internal
-     */
-    private _progress: (percent: number) => void;
-
-    /** 
-     * 加载完成回调
-     * @internal
-     */
-    private _complete: () => void;
-
-    /** 
-     * 加载失败回调
-     * @internal
-     */
-    private _fail: (msg: string, err: Error) => void;
-
-    /** 
-     * 资源配置
-     * @internal
-     */
+    /** @internal */
     private _configs: IAssetConfig[] = [];
-    /** 
-     * 资源加载项
-     * @internal
-     */
-    private _items: { type: typeof Asset, bundle: string, path: string, isFile?: boolean, status: StateType, count: number }[] = [];
-    /** 
-     * 加载完成数量
-     * @internal
-     */
-    private _completeCounts: Map<string, number> = new Map();
 
     constructor(batchName?: string) {
+        super();
         this._name = batchName || "";
     }
 
     /**
      * 开始加载资源
      * @param {IAssetConfig[]} res.configs 资源配置
-     * @param {number} res.parallel 并行加载数量 默认 10
-     * @param {number} res.retry 失败重试次数 默认 3
-     * @param {Function} res.complete 加载完成回调
-     * @param {Function} res.progress 加载进度回调
-     * @param {Function} res.fail 加载失败回调
      */
-    public start(res: { configs: IAssetConfig[], parallel?: number, retry?: number, complete: () => void, fail: (msg: string, err: Error) => void, progress?: (percent: number) => void }): void {
-        this._configs = res.configs;
-        this._maxParallel = res.parallel || 10;
-        this._maxRetry = res.retry || 3;
-        this._complete = res.complete;
-        this._progress = res.progress;
-        this._fail = res.fail;
+    public start(assetConfigs: IAssetConfig[]): void {
+        this._configs = assetConfigs;
+        this.onStart();
+    }
 
-        this._total = 0;
+    private onStart(): void {
+        this.initialize();
         this._initSuccess = false;
-        this._items.length = 0;
-
-        let initCount = res.configs.length;
-        for (const item of res.configs) {
-            let bundlename = item.bundle || "resources";
-            let count = 0;
+        let initCount = this._configs.length;
+        for (const info of this._configs) {
+            let bundlename = info.bundle || "resources";
             if (bundlename == "resources") {
-                count = AssetUtils.getResourceCount(item.path, item.type);
-                this._total += count;
+                let count = AssetUtils.getResourceCount(info.path, info.type, resources);
+                this.setTotalCount(bundlename, info.path, count);
 
-                this._items.push({ type: item.type, bundle: item.bundle || "resources", path: item.path, isFile: item.isFile || false, status: StateType.Wait, count: count })
+                this.addAssetInfo(new AssetInfo(info, resources));
                 initCount--;
-
                 initCount <= 0 && this.initSuccess();
             } else {
                 AssetUtils.loadBundle(bundlename).then((bundle: AssetManager.Bundle) => {
-                    count = AssetUtils.getResourceCount(item.path, item.type, bundle);
-                    this._total += count;
+                    let count = AssetUtils.getResourceCount(info.path, info.type, bundle);
+                    this.setTotalCount(bundlename, info.path, count);
 
-                    this._items.push({ type: item.type, bundle: item.bundle || "resources", path: item.path, isFile: item.isFile || false, status: StateType.Wait, count: count })
+                    this.addAssetInfo(new AssetInfo(info, bundle));
                     initCount--;
-
                     initCount <= 0 && this.initSuccess();
                 }).catch((err: Error) => {
                     if (this._retry < this._maxRetry) {
-                        this.retryStart();
+                        this._retry++;
+                        this.onStart();
                     } else {
-                        this._fail(`加载资源包[${bundlename}]失败`, err);
+                        this.failCallback(ErrorCode.BundleLoadFailed, `加载bundle【${bundlename}】失败`);
                     }
                 });
             }
-        }
-    }
-
-    /** 重试 (重新加载失败的资源) */
-    public retry(): void {
-        this._parallel = 0;
-        this._retry = 0;
-        if (!this._initSuccess) {
-            this.retryStart();
-        } else {
-            this.retryLoad();
-        }
-    }
-
-    /** 
-     * 重试开始
-     * @internal
-     */
-    private retryStart(): void {
-        this._retry++;
-        this.start({
-            configs: this._configs,
-            parallel: this._maxParallel,
-            retry: this._maxRetry,
-            complete: this._complete,
-            fail: this._fail,
-            progress: this._progress
-        });
-    }
-
-    /** 
-     * 重试加载资源
-     * @internal
-     */
-    private retryLoad(): void {
-        this._retry++;
-        let count = this.resetErrorItem();
-        let maxLoad = Math.min(count, this._maxParallel);
-        for (let i = 0; i < maxLoad; i++) {
-            this.loadNext();
         }
     }
 
@@ -206,7 +90,7 @@ export class AssetLoader {
     private initSuccess(): void {
         this._initSuccess = true;
         this._parallel = 0;
-        let maxLoad = Math.min(this._items.length, this._maxParallel);
+        let maxLoad = Math.min(this.getAssetsCount(), this._maxParallel);
         for (let i = 0; i < maxLoad; i++) {
             this.loadNext();
         }
@@ -217,31 +101,30 @@ export class AssetLoader {
      * @internal
      */
     private loadNext(): void {
-        // 找到第一个等待中的资源
-        let index = this._items.findIndex(item => item.status == StateType.Wait);
+        // 存在等待中的资源，则加载等待中的资源
+        let index = this.getFirstWaitIndex();
         if (index > -1) {
             this.loadItem(index);
-        } else if (!this._items.some(item => item.status != StateType.Finish)) {
-            // 所有资源全部完成了
-            this._complete();
-        } else if (this._parallel <= 0 && this._retry < this._maxRetry) {
-            this.retryLoad();
+            return;
         }
-    }
+        // 所有资源全部完成了，则完成
+        if (this.isAllFinished()) {
+            this.completeAll();
+            return;
+        }
 
-    /** 
-     * 重置失败资源状态为等待中
-     * @internal
-     */
-    private resetErrorItem(): number {
-        let count = 0;
-        for (const item of this._items) {
-            if (item.status == StateType.Error) {
-                item.status = StateType.Wait;
-                count++;
-            }
+        // 如果当前并行数量 > 0 则跳过
+        if (this._parallel > 0) {
+            return;
         }
-        return count;
+
+        // 重试次数小于最大次数 则开始重试
+        if (this._retry < this._maxRetry) {
+            this.retryLoad();
+            return;
+        }
+        // 最终资源加载失败了
+        this.downloadFaildAnalysis();
     }
 
     /** 
@@ -249,86 +132,69 @@ export class AssetLoader {
      * @internal
      */
     private loadItem(index: number): void {
-        let item = this._items[index];
+        let item = this.getAssetInfo(index);
         item.status = StateType.Loading;
         this._parallel++;
-        if (item.bundle == "resources") {
-            if (item.isFile) {
-                this.loadFile(index, resources);
-            } else {
-                this.loadDir(index, resources);
-            }
-        } else {
-            AssetUtils.loadBundle(item.bundle).then((bundle: AssetManager.Bundle) => {
-                if (item.isFile) {
-                    this.loadFile(index, bundle);
-                } else {
-                    this.loadDir(index, bundle);
+
+        if (item.isFile) {
+            // 加载单个资源文件
+            AssetUtils.loadFile(item.assetBundle, item.path, item.type, {
+                complete: (asset: Asset) => {
+                    this._parallel--;
+                    item.status = StateType.Finish;
+                    AssetPool.add(asset, item.assetBundle, this._name);
+                    this.updateCompleteCount(item.bundle, item.path, 1, 1);
+                    this.loadNext();
+                },
+                fail: () => {
+                    this._parallel--;
+                    item.status = StateType.Error;
+                    this.loadNext();
                 }
-            }).catch((err: Error) => {
-                console.log(`load bundle error, bundle:${item.bundle}, filename:${item.path}`);
-                item.status = StateType.Error;
+            });
+        } else {
+            // 加载文件夹
+            AssetUtils.loadDir(item.assetBundle, item.path, item.type, {
+                complete: (assets: Asset[]) => {
+                    this._parallel--;
+                    item.status = StateType.Finish;
+                    AssetPool.add(assets, item.assetBundle, this._name);
+                    this.loadNext();
+                },
+                fail: () => {
+                    this._parallel--;
+                    item.status = StateType.Error;
+                    this.loadNext();
+                },
+                progress: (value: number, total: number) => {
+                    (value > 0 && total > 0) && this.updateCompleteCount(item.bundle, item.path, value, total);
+                }
             });
         }
     }
 
-    /** 
-     * 加载资源
-     * @internal
-     */
-    private loadDir(index: number, bundle: AssetManager.Bundle): void {
-        let item = this._items[index];
-        bundle.loadDir(item.path, item.type, (finish: number, total: number) => {
-            if (total > 0 && finish > 0) {
-                this._completeCounts.set(`${item.bundle}:${item.path}`, finish);
-                this._progress && this.updateProgress();
-            }
-        }, (error: Error, assets: Array<Asset>) => {
-            this._parallel--;
-            if (error) {
-                console.log(`load dir error, bundle:${item.bundle}, dir:${item.path}`);
-                item.status = StateType.Error;
-            } else {
-                item.status = StateType.Finish;
-                this._completeCounts.set(`${item.bundle}:${item.path}`, assets.length);
-                AssetPool.add(assets, bundle, this._name);
-            }
-            this._progress && this.updateProgress();
-            this.loadNext();
-        });
-    }
-
-    /** 
-     * 加载资源
-     * @internal
-     */
-    private loadFile(index: number, bundle: AssetManager.Bundle): void {
-        let item = this._items[index];
-        bundle.load(item.path, item.type, (error: Error, asset: Asset) => {
-            this._parallel--;
-            if (error) {
-                console.log(`load file error, bundle:${item.bundle}, filename:${item.path}`);
-                item.status = StateType.Error;
-            } else {
-                item.status = StateType.Finish;
-                this._completeCounts.set(`${item.bundle}:${item.path}`, 1);
-                AssetPool.add(asset, bundle, this._name);
-            }
-
-            this._progress && this.updateProgress();
-            this.loadNext();
-        });
-    }
-
-    /** 
-     * 更新进度
-     * @internal
-     */
-    private updateProgress(): void {
-        let value = 0;
-        for (const count of this._completeCounts.values()) {
-            value += count;
+    /** 重新加载失败的资源 */
+    public retryDownLoadFailedAssets(): void {
+        this._parallel = 0;
+        this._retry = 0;
+        if (!this._initSuccess) {
+            this._retry++;
+            this.onStart();
+        } else {
+            this.retryLoad();
         }
-        this._progress(Math.max(Math.min(value / this._total, 1), 0));
+    }
+
+    /** 
+     * 重试加载资源
+     * @internal
+     */
+    private retryLoad(): void {
+        this._retry++;
+        let count = this.resetErrorAssets();
+        let maxLoad = Math.min(count, this._maxParallel);
+        for (let i = 0; i < maxLoad; i++) {
+            this.loadNext();
+        }
     }
 }
