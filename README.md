@@ -16,7 +16,7 @@
 ### 安装
 
 ```bash
-npm install kunpo-assets
+npm install kunpocc-assets
 ```
 
 ### 使用
