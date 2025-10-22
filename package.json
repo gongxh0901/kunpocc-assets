@@ -1,6 +1,6 @@
 {
     "name": "kunpocc-assets",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "基于creator3.0+的kunpocc库",
     "main": "./dist/kunpocc-assets.cjs",
     "module": "./dist/kunpocc-assets.mjs",
@@ -20,7 +20,7 @@
     "scripts": {
         "clean": "rm -rf dist",
         "build": "npm run clean && rollup -c rollup.config.mjs",
-        "copy": "cp -r dist/* ../kunpolibrary/demo/node_modules/kunpocc-assets/dist/",
+        "copy": "cp -r dist/* demo-assets/node_modules/kunpocc-assets/dist/",
         "build:all": "npm run build && npm run copy"
     },
     "files": [

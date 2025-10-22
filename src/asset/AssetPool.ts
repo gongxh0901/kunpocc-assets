@@ -12,17 +12,19 @@ export class AssetPool {
      * 资源名对应的资源
      * @internal
      */
-    private static _assets: { [path: string]: Asset } = {};
+    private static _assets: Map<string, Asset> = new Map();
     /** 
      * uuid 对应的资源名
      * @internal
     */
     private static _uuidToName: Map<string, string> = new Map();
-    /** 
-     * 资源加载批次对应的资源名
-     * @internal
-     */
-    private static _batchAssetNames: Map<string, string[]> = new Map();
+
+    /** @internal */
+    private static _batchAssetNames: Map<string, Set<string>> = new Map();
+
+    /** @internal */
+    private static _assetToBatchName: WeakMap<Asset, string> = new WeakMap();
+
 
     /** 添加资源 */
     public static add(asset: Asset[] | Asset, bundle: AssetManager.Bundle = resources, batchName: string = ""): void {
@@ -41,14 +43,26 @@ export class AssetPool {
             let key = this.getKey(info.path, bundle.name);
             // log(`>>>uuid:${uuid}, path:${info.path}`);
             this._uuidToName.set(uuid, key);
-            this._assets[key] = asset;
+            this._assets.set(key, asset);
 
-            if (batchName) {
-                let names = this._batchAssetNames.get(batchName) || [];
-                names.push(key);
-                this._batchAssetNames.set(batchName, names);
-            }
+            // 添加到批次
+            this.addToBatch(batchName, key, asset);
         }
+    }
+
+    private static addToBatch(batchName: string, key: string, asset: Asset): void {
+        if (!batchName) {
+            return;
+        }
+        if (!this._batchAssetNames.has(batchName)) {
+            this._batchAssetNames.set(batchName, new Set());
+        }
+        this._batchAssetNames.get(batchName).add(key);
+        this._assetToBatchName.set(asset, batchName);
+    }
+
+    public static getAllAssetPaths(): string[] {
+        return Array.from(this._assets.keys());
     }
 
     /** 
@@ -58,10 +72,7 @@ export class AssetPool {
      */
     public static has(path: string, bundlename: string = "resources"): boolean {
         let key = this.getKey(path, bundlename);
-        if (!this._assets[key]) {
-            return false;
-        }
-        return true;
+        return this._assets.has(key);
     }
     /** 
      * 获取资源
@@ -70,10 +81,10 @@ export class AssetPool {
      */
     public static get<T extends Asset>(path: string, bundlename: string = "resources"): T {
         let key = this.getKey(path, bundlename);
-        if (!this._assets[key]) {
-            console.log(`获取资源失败: 资源 bundle:${bundlename}, path:${path} 未加载`);
+        if (!this._assets.has(key)) {
+            console.warn(`获取资源失败: 资源 bundle:${bundlename}, path:${path} 未加载`);
         }
-        return this._assets[key] as T;
+        return this._assets.get(key) as T;
     }
 
     /** 
@@ -91,10 +102,10 @@ export class AssetPool {
      */
     public static getByUUID<T extends Asset>(uuid: string): T {
         if (!this._uuidToName.has(uuid)) {
-            console.log(`获取资源失败: 资源 uuid:${uuid} 未加载`);
+            console.warn(`获取资源失败: 资源 uuid:${uuid} 未加载`);
         }
         let key = this._uuidToName.get(uuid);
-        return this._assets[key] as T;
+        return this._assets.get(key) as T;
     }
 
     /** 
@@ -164,10 +175,10 @@ export class AssetPool {
      * 释放所有加载的资源
      */
     public static releaseAll(): void {
-        for (const key in this._assets) {
-            this._assets[key].decRef();
-        }
-        this._assets = {};
+        this._assets.forEach((asset, key) => {
+            asset.decRef();
+        });
+        this._assets.clear();
         this._uuidToName.clear();
         this._batchAssetNames.clear();
     }
@@ -177,13 +188,20 @@ export class AssetPool {
      * @internal
      */
     private static release(key: string): void {
-        if (this._assets[key]) {
-            this._uuidToName.delete(this._assets[key].uuid);
+        if (this._assets.has(key)) {
+            let asset = this._assets.get(key);
 
-            this._assets[key].decRef();
-            delete this._assets[key];
+            if (this._assetToBatchName.has(asset)) {
+                let batchName = this._assetToBatchName.get(asset);
+                this._batchAssetNames.get(batchName).delete(key);
+                this._assetToBatchName.delete(asset);
+            }
+
+            this._uuidToName.delete(asset.uuid);
+            asset.decRef();
+            this._assets.delete(key);
         } else {
-            console.log(`释放资源失败: 资源【${key}】未加载`);
+            console.warn(`释放资源失败: 资源【${key}】未加载`);
         }
     }
 

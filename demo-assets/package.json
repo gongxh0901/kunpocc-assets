@@ -1,0 +1,10 @@
+{
+  "name": "demo-assets",
+  "uuid": "e62dd39c-8d67-46e9-bb05-8e1b40692da3",
+  "creator": {
+    "version": "3.8.7"
+  },
+  "dependencies": {
+    "kunpocc-assets": "^0.1.1"
+  }
+}
