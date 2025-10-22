@@ -1,6 +1,6 @@
 {
     "name": "kunpocc-assets",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "基于creator3.0+的kunpocc库",
     "main": "./dist/kunpocc-assets.cjs",
     "module": "./dist/kunpocc-assets.mjs",
